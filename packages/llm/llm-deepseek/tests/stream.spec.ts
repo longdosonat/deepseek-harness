@@ -46,6 +46,18 @@ describe('Messages stream', () => {
     expect(result.message.content[0]).toMatchObject({ arguments: JSON.stringify(input) })
   })
 
+  it.each([
+    { returned: 'Bash', declared: ['bash', 'read'], name: 'bash' },
+    { returned: 'read', declared: ['bash', 'read'], name: 'read' },
+    { returned: 'Bash', declared: ['bash', 'BASH'], name: 'Bash' },
+    { returned: 'Unknown', declared: ['bash'], name: 'Unknown' },
+  ])('maps returned tool name $returned to declared $name', async ({ returned, declared, name }) => {
+    const result = await assemble(translate(events([start,
+      { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'a', name: returned, input: {} } },
+      { type: 'content_block_stop', index: 0 }, ...end('tool_use')]), MODEL, declared))
+    expect(result.message.content[0]).toMatchObject({ name })
+  })
+
   it('preserves signature-only thinking and prunes truncated tools with their replay entries', async () => {
     const result = await assemble(translate(events([start,
       { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },

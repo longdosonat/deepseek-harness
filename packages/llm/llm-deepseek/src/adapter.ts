@@ -166,7 +166,7 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
         }
         await extensions.accept()
         if (response.body === null) throw new LlmError('DeepSeek Messages returned no response body', 'EMPTY_RESPONSE')
-        yield* translate(parseSse(response.body, activity), options.model)
+        yield* translate(parseSse(response.body, activity), options.model, options.tools?.map(tool => tool.name))
         return
       }
     } catch (error) {

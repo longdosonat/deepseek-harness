@@ -1,0 +1,3 @@
+- insert:
+    - id: messages-tool-name-case-snapshot
+      name: '../../../packages/llm/llm-deepseek/tests/fixtures/tool-name-case.ts'

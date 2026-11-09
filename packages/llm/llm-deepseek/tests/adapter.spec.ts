@@ -29,7 +29,7 @@ import { object } from '../src/replay.ts'
 import { DeepSeekFileStore } from '../src/file-store.ts'
 import * as Messages from '@deepseek-ai/dsh-llm-deepseek-api-key'
 import * as AccountProvider from '@deepseek-ai/dsh-llm-deepseek-account'
-import { adapter, assemble, chunks, MODEL, options, prepareExtensions, server, sse, textEvents, user, sourceModuleLoader } from './helpers.ts'
+import { adapter, assemble, chunks, end, MODEL, options, prepareExtensions, server, sse, start, textEvents, user, sourceModuleLoader } from './helpers.ts'
 
 const cleanup: (() => Promise<unknown>)[] = []
 afterEach(async () => {
@@ -124,6 +124,15 @@ describe('direct Messages HTTP', () => {
     })
     await assemble(llm.stream(options({ tools })))
     expect(http.requests[1]?.headers).not.toHaveProperty('anthropic-beta')
+  })
+
+  it('restores declared tool names from a relay that changes their case', async () => {
+    const http = await endpoint(response => response.end(sse([start,
+      { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'call_1', name: 'Bash', input: { command: 'pwd' } } },
+      { type: 'content_block_stop', index: 0 }, ...end('tool_use')])))
+    const tools = [{ name: 'bash', description: 'Run a command', parameters: {} }]
+    const response = await assemble(adapter({ baseURL: http.url }).stream(options({ tools })))
+    expect(response.message.content).toEqual([{ type: 'tool-call', id: 'call_1', name: 'bash', arguments: '{"command":"pwd"}' }])
   })
 
   it('surfaces provider rejection of an all-deferred request without adding tools', async () => {

@@ -42,7 +42,14 @@ function updateUsage(usage: TokenUsage, raw: unknown): void {
   }
 }
 
-function startBlock(event: Record<string, unknown>, index: number): Block {
+/** Map an undeclared returned tool name to the unique declared name equal to it ignoring case; some relays return `Bash` for `bash`. */
+function declaredName(name: string, declared: readonly string[]): string {
+  if (declared.includes(name)) return name
+  const [match, ...others] = declared.filter(candidate => candidate.toLowerCase() === name.toLowerCase())
+  return match !== undefined && others.length === 0 ? match : name
+}
+
+function startBlock(event: Record<string, unknown>, index: number, declared: readonly string[]): Block {
   const native = object(event.content_block)
   let content: Block['content']
   let replay: ReplayBlock
@@ -53,7 +60,7 @@ function startBlock(event: Record<string, unknown>, index: number): Block {
       replay = { type: 'reasoning', ...native.signature === undefined ? {} : { signature: string(native.signature) } }
       break
     case 'tool_use':
-      content = { type: 'tool-call', id: ToolCallId(string(native.id)), name: string(native.name), arguments: JSON.stringify(object(native.input)) }
+      content = { type: 'tool-call', id: ToolCallId(string(native.id)), name: declaredName(string(native.name), declared), arguments: JSON.stringify(object(native.input)) }
       if (!content.id || !content.name) return malformed('empty tool identity')
       replay = { type: 'tool-call' }
       break
@@ -99,9 +106,12 @@ function stopReason(raw: unknown): FinishReason {
 /** Translate decoded SSE data into the Harness stream protocol.
  * @param events - framed, decoded provider events in arrival order.
  * @param model - requested model id stored in durable replay state.
+ * @param declared - tool names declared in the request.
  * @returns blocks, one final usage value, and exactly one terminal finish.
  */
-export async function* translate(events: AsyncIterable<Record<string, unknown>>, model: string): AsyncGenerator<StreamChunk> {
+export async function* translate(
+  events: AsyncIterable<Record<string, unknown>>, model: string, declared: readonly string[] = [],
+): AsyncGenerator<StreamChunk> {
   const blocks = new Map<number, Block>()
   const usage: TokenUsage = { inputTokens: 0, outputTokens: 0 }
   let started = false
@@ -121,7 +131,7 @@ export async function* translate(events: AsyncIterable<Record<string, unknown>>,
     if (event.type === 'content_block_start') {
       const wireIndex = indexOf(event)
       if (blocks.has(wireIndex) || reason !== undefined) return malformed('block starts after settlement or repeats an index')
-      const block = startBlock(event, blocks.size)
+      const block = startBlock(event, blocks.size, declared)
       blocks.set(wireIndex, block)
       yield { type: 'block-start', index: block.index, blockType: block.content.type }
       if (block.content.type === 'text' || block.content.type === 'reasoning') {
